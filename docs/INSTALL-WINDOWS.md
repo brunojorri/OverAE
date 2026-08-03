@@ -5,19 +5,16 @@
 - Figma Desktop.
 - Adobe After Effects 2026 (26.x).
 - Node.js 18 ou mais recente.
-- Git.
 
 ## Instalação automática
 
 No PowerShell:
 
 ```powershell
-git clone https://github.com/brunojorri/OverAE.git
-Set-Location OverAE
-powershell -ExecutionPolicy Bypass -File .\install\windows\install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/brunojorri/OverAE/main/install/windows/bootstrap.ps1 | iex"
 ```
 
-O script instala o painel do After Effects no perfil do usuário, copia a ponte local e configura sua inicialização automática.
+O comando baixa o pacote diretamente do GitHub, sem exigir Git ou GitHub Desktop. Em seguida, instala o painel do After Effects no perfil do usuário, copia a ponte local e configura sua inicialização automática.
 
 ## Registrar o plugin no Figma
 

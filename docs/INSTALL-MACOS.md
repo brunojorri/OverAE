@@ -7,16 +7,13 @@
 - Figma Desktop.
 - Adobe After Effects 2026 (26.x).
 - Node.js 18 ou mais recente.
-- Git.
 
 ## Instalação automática
 
 No Terminal:
 
 ```bash
-git clone https://github.com/brunojorri/OverAE.git
-cd OverAE
-bash ./install/macos/install.sh
+curl -fsSL https://raw.githubusercontent.com/brunojorri/OverAE/main/install/macos/bootstrap.sh | bash
 ```
 
 ## Registrar o plugin no Figma

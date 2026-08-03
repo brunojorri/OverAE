@@ -19,16 +19,14 @@ OverAE envia frames e layers selecionadas no Figma diretamente para o Adobe Afte
 
 ## Instalação rápida para beta
 
-Durante o beta, é necessário ter [Git](https://git-scm.com/) e [Node.js 18 ou mais recente](https://nodejs.org/) instalados. A versão final terá instaladores que incluem a ponte e dispensam o Node.js.
+Durante o beta, é necessário ter [Node.js 18 ou mais recente](https://nodejs.org/) instalado. Git e GitHub Desktop não são necessários. A versão final terá instaladores que incluem a ponte e dispensam também o Node.js.
 
 ### Windows
 
 Abra o PowerShell e execute:
 
 ```powershell
-git clone https://github.com/brunojorri/OverAE.git
-Set-Location OverAE
-powershell -ExecutionPolicy Bypass -File .\install\windows\install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/brunojorri/OverAE/main/install/windows/bootstrap.ps1 | iex"
 ```
 
 ### macOS
@@ -36,9 +34,7 @@ powershell -ExecutionPolicy Bypass -File .\install\windows\install.ps1
 Abra o Terminal e execute:
 
 ```bash
-git clone https://github.com/brunojorri/OverAE.git
-cd OverAE
-bash ./install/macos/install.sh
+curl -fsSL https://raw.githubusercontent.com/brunojorri/OverAE/main/install/macos/bootstrap.sh | bash
 ```
 
 Depois da instalação, siga a etapa única mostrada pelo instalador para importar o `manifest.json` no Figma Desktop. O Figma não oferece uma API oficial para instalar silenciosamente plugins locais de desenvolvimento.
