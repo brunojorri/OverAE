@@ -12,8 +12,9 @@ try {
   Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
   $installer = Join-Path $extractPath "OverAE-main\install\windows\install.ps1"
   if (-not (Test-Path -LiteralPath $installer)) { throw "O pacote baixado nao contem o instalador esperado." }
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
-  if ($LASTEXITCODE -ne 0) { throw "O instalador do OverAE terminou com erro ($LASTEXITCODE)." }
+  # Execute no processo atual. Algumas politicas corporativas do Windows
+  # bloqueiam a abertura de um segundo powershell.exe, mesmo para scripts locais.
+  & $installer
 } finally {
   if (Test-Path -LiteralPath $temporaryRoot) { Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue }
 }

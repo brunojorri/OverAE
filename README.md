@@ -26,7 +26,7 @@ Durante o beta, é necessário ter [Node.js 18 ou mais recente](https://nodejs.o
 Abra o PowerShell e execute:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/brunojorri/OverAE/main/install/windows/bootstrap.ps1 | iex"
+Set-ExecutionPolicy -Scope Process Bypass -Force; irm https://raw.githubusercontent.com/brunojorri/OverAE/main/install/windows/bootstrap.ps1 | iex
 ```
 
 ### macOS
