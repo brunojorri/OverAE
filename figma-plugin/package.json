@@ -1,0 +1,7 @@
+{
+  "name": "figma-ae-plugin",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": { "build": "esbuild src/code.ts --bundle --target=es2018 --outfile=code.js && node scripts/build-ui.js" },
+  "devDependencies": { "@figma/plugin-typings": "^1.117.0", "esbuild": "^0.25.0", "typescript": "^5.0.0" }
+}

@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 14px; background: #171717; color: #f4f4f4; font: 11px Inter, system-ui, sans-serif; }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .identity { display: flex; align-items: center; gap: 8px; }
+    .avatar { width: 24px; height: 24px; border: 1px solid #424242; border-radius: 50%; object-fit: cover; }
+    .brand { font-size: 13px; font-weight: 700; letter-spacing: -.2px; }
+    .connection { width: 7px; height: 7px; border-radius: 50%; background: #777; box-shadow: 0 0 0 3px #242424; }
+    .connection.online { background: #52d273; }
+    .actions { display: flex; justify-content: center; gap: 22px; }
+    .action { width: 72px; text-align: center; }
+    button { display: grid; place-items: center; width: 52px; height: 48px; margin: 0 auto 6px; padding: 0; border: 1px solid #383838; border-radius: 10px; background: #252525; color: #f5f5f5; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
+    button:hover { background: #303030; border-color: #565656; }
+    button:active { transform: scale(.96); }
+    button:disabled { cursor: default; opacity: .45; }
+    button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .label { color: #bdbdbd; line-height: 1.15; }
+    .progress { height: 3px; margin-top: 13px; overflow: hidden; border-radius: 2px; background: #292929; }
+    #bar { width: 0; height: 100%; border-radius: inherit; background: #6c8cff; transition: width .2s ease; }
+    #status { height: 26px; margin-top: 7px; overflow: hidden; color: #8f8f8f; line-height: 13px; text-align: center; }
+    footer { margin-top: 2px; text-align: center; }
+    footer button { display: inline; width: auto; height: auto; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; color: #666; font: 9px Inter, system-ui, sans-serif; }
+    footer button:hover { background: none; color: #aaa; }
+  </style>
+</head>
+<body>
+  <header><div class="identity"><img class="avatar" src="data:image/jpeg;base64,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" alt="Bruno Jorri"><div class="brand">OverAE</div></div><div id="connection" class="connection"></div></header>
+  <div class="actions">
+    <div class="action">
+      <button id="send-frame" title="Enviar frame selecionado" aria-label="Enviar frame selecionado">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M13 8l4 4-4 4"/></svg>
+      </button>
+      <div class="label">Enviar frame</div>
+    </div>
+    <div class="action">
+      <button id="send-layer" title="Enviar layer selecionada" aria-label="Enviar layer selecionada">
+        <svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 12 8 4 8-4M4 17l8 4 8-4"/></svg>
+      </button>
+      <div class="label">Enviar layer</div>
+    </div>
+  </div>
+  <div class="progress"><div id="bar"></div></div>
+  <div id="status"></div>
+  <footer><button id="author" type="button">By Bruno Jorri</button></footer>
+  <script>
+    const buttons = Array.from(document.querySelectorAll("button"));
+    const status = document.getElementById("status");
+    const bar = document.getElementById("bar");
+    const connection = document.getElementById("connection");
+    const bridgeUrl = "http://localhost:47831";
+    let bridgeToken = "";
+
+    function progress(value, message) {
+      bar.style.width = Math.max(0, Math.min(100, value)) + "%";
+      status.textContent = message;
+    }
+    function busy(value) { buttons.forEach((button) => button.disabled = value); }
+
+    async function connect() {
+      try {
+        const response = await fetch(bridgeUrl + "/v1/session");
+        if (!response.ok) throw new Error();
+        bridgeToken = (await response.json()).token;
+        connection.classList.add("online");
+        status.textContent = "Pronto para enviar";
+        return true;
+      } catch (_) {
+        connection.classList.remove("online");
+        status.textContent = "Ponte desconectada";
+        return false;
+      }
+    }
+
+    function begin(type, label) {
+      busy(true);
+      progress(3, "Preparando " + label + "…");
+      parent.postMessage({ pluginMessage: { type } }, "*");
+    }
+    document.getElementById("send-frame").onclick = () => begin("export", "o frame");
+    document.getElementById("send-layer").onclick = () => begin("export-layer", "a layer");
+    document.getElementById("author").onclick = () => parent.postMessage({ pluginMessage: { type: "open-instagram" } }, "*");
+
+    window.onmessage = async (event) => {
+      const message = event.data.pluginMessage;
+      if (!message) return;
+      if (message.type === "progress") { progress(message.value, message.message); return; }
+      if (message.type === "error") { busy(false); progress(0, message.message); return; }
+      if (message.type !== "scene") return;
+      progress(80, "Enviando…");
+      if (!bridgeToken && !(await connect())) { busy(false); return; }
+      try {
+        const response = await fetch(bridgeUrl + "/v1/scene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Bridge-Token": bridgeToken },
+          body: JSON.stringify(message.scene)
+        });
+        progress(94, "Aguardando o After Effects…");
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+        progress(100, result.layerCount + " layers enviadas");
+      } catch (error) {
+        progress(0, "Falha: " + error.message);
+      } finally {
+        busy(false);
+      }
+    };
+    connect();
+  </script>
+</body>
+</html>

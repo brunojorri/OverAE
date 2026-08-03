@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>OverAE</title>
+  <script src="./lib/CSInterface.js"></script>
+  <style>
+    body { font: 13px Arial; margin: 16px; background: #323232; color: #eee; }
+    .actions { display: flex; gap: 14px; align-items: flex-start; margin-top: 16px; }
+    .action { display: flex; flex-direction: column; align-items: center; gap: 5px; color: #cfcfcf; font-size: 11px; }
+    button { box-sizing: border-box; width: 42px; height: 42px; display: grid; place-items: center; padding: 0; background: #1473e6; border: 1px solid #2680eb; color: white; border-radius: 7px; cursor: pointer; }
+    button:hover { background: #2680eb; }
+    button:disabled { opacity: .45; cursor: default; }
+    button.secondary { background: #414141; border-color: #5a5a5a; }
+    button.secondary:hover { background: #505050; }
+    button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    #status { margin-top: 12px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div class="actions">
+    <div class="action">
+      <button id="import" title="Importar novamente" aria-label="Importar novamente"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 4v7h-7"/></svg></button>
+      <span>Importar</span>
+    </div>
+    <div class="action">
+      <button id="cleanup" class="secondary" title="Limpar footages não utilizadas" aria-label="Limpar footages não utilizadas"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button>
+      <span>Limpar</span>
+    </div>
+  </div>
+  <div id="status">Conectando…</div>
+  <script>
+    const cs = new CSInterface();
+    const status = document.getElementById("status");
+    const bridgeUrl = "http://127.0.0.1:47831";
+    let bridgeToken = "";
+    let importing = false;
+    let lastImportedId = localStorage.getItem("figmaAeLastImportedId") || "";
+
+    async function connect() {
+      try {
+        const response = await fetch(bridgeUrl + "/v1/session");
+        if (!response.ok) throw new Error();
+        bridgeToken = (await response.json()).token;
+        status.textContent = "Conectado. Aguardando envio do Figma…";
+        return true;
+      } catch (_) {
+        bridgeToken = "";
+        status.textContent = "Ponte desconectada.";
+        return false;
+      }
+    }
+
+    async function latestScene() {
+      if (!bridgeToken && !(await connect())) return null;
+      const response = await fetch(bridgeUrl + "/v1/scene/latest", { headers: { "X-Bridge-Token": bridgeToken } });
+      if (response.status === 401) { bridgeToken = ""; return null; }
+      if (response.status === 404) return null;
+      const scene = await response.json();
+      if (!response.ok) throw new Error(scene.error || "Falha ao ler o frame.");
+      return scene;
+    }
+
+    function importScene(scene) {
+      if (!scene || importing) return;
+      importing = true;
+      status.textContent = "Importando “" + scene.frame.name + "”…";
+      cs.evalScript("figmaAeImport(" + JSON.stringify(JSON.stringify(scene)) + ")", (result) => {
+        importing = false;
+        lastImportedId = scene.exportId;
+        localStorage.setItem("figmaAeLastImportedId", lastImportedId);
+        status.textContent = result || "Importado.";
+      });
+    }
+
+    async function poll() {
+      try {
+        const scene = await latestScene();
+        if (scene && scene.exportId && scene.exportId !== lastImportedId) importScene(scene);
+      } catch (error) {
+        status.textContent = "Falha na importação automática: " + error.message;
+      }
+    }
+
+    document.getElementById("import").onclick = async () => {
+      try { importScene(await latestScene()); }
+      catch (error) { status.textContent = "Não foi possível importar: " + error.message; }
+    };
+
+    document.getElementById("cleanup").onclick = () => {
+      const button = document.getElementById("cleanup");
+      button.disabled = true;
+      status.textContent = "Verificando footages sem uso…";
+      cs.evalScript("overAECleanupUnused()", (result) => {
+        button.disabled = false;
+        status.textContent = result || "Limpeza concluída.";
+      });
+    };
+
+    connect().then(poll);
+    setInterval(poll, 800);
+  </script>
+</body>
+</html>
