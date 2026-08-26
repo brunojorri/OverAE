@@ -212,14 +212,16 @@
     };
   }
   function imageMaskGeometry(node, frame) {
-    if (node.type !== "ELLIPSE" && node.type !== "RECTANGLE" && !("vectorPaths" in node && node.vectorPaths.length > 0)) return void 0;
+    const hasVectorPath = "vectorPaths" in node && node.vectorPaths.length > 0;
+    const hasRectangularBounds = node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE";
+    if (node.type !== "ELLIPSE" && !hasRectangularBounds && !hasVectorPath) return void 0;
     const geometry = vectorGeometryRelativeToFrame(node, frame);
     if (!geometry) return void 0;
     const width = geometry.localWidth * Math.abs(geometry.scaleX);
     const height = geometry.localHeight * Math.abs(geometry.scaleY);
-    const cornerRadius = node.type === "RECTANGLE" && typeof node.cornerRadius === "number" ? node.cornerRadius * Math.min(Math.abs(geometry.scaleX), Math.abs(geometry.scaleY)) : void 0;
+    const cornerRadius = "cornerRadius" in node && typeof node.cornerRadius === "number" ? node.cornerRadius * Math.min(Math.abs(geometry.scaleX), Math.abs(geometry.scaleY)) : void 0;
     return {
-      kind: node.type === "ELLIPSE" ? "ellipse" : node.type === "RECTANGLE" ? "rectangle" : "vector",
+      kind: node.type === "ELLIPSE" ? "ellipse" : hasVectorPath ? "vector" : "rectangle",
       x: geometry.centerX - width / 2,
       y: geometry.centerY - height / 2,
       width,
@@ -256,6 +258,7 @@
     return { opacity, visible };
   }
   async function flatten(node, frame, output, onLeaf, inheritedOpacity = 1, inheritedVisible = true, inheritedMask) {
+    var _a;
     const effectiveOpacity = inheritedOpacity * node.opacity;
     const effectiveVisible = inheritedVisible && node.visible;
     if ("children" in node) {
@@ -265,7 +268,7 @@
         output.push({ id: `${node.id}:background`, name: `${node.name} \xB7 Background`, kind: "rectangle", x: relative2.x, y: relative2.y, width: relative2.width, height: relative2.height, rotation: relative2.rotation, opacity: effectiveOpacity, visible: effectiveVisible, blendMode: node.blendMode, color: solidColor(node), stroke: solidStroke(node), cornerRadius, blur: blurEffect(node) });
         onLeaf();
       }
-      let activeMask = inheritedMask;
+      let activeMask = "clipsContent" in node && node.clipsContent ? node : inheritedMask;
       for (const child of node.children) {
         if (child.isMask) {
           activeMask = child;
@@ -296,10 +299,11 @@
         if (!("width" in node) || !("height" in node)) throw new Error(`N\xE3o foi poss\xEDvel determinar as dimens\xF5es da imagem de \u201C${node.name}\u201D.`);
         size = { width: node.width, height: node.height };
       }
-      output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: imageExtension(bytes), imagePlacement: imagePlacement(node, frame, image, size.width, size.height), imageMask: imageMaskGeometry(inheritedMask || node, frame) });
+      const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : void 0;
+      output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: imageExtension(bytes), imagePlacement: imagePlacement(node, frame, image, size.width, size.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
     } else if (gradient && node.type === "RECTANGLE") {
       output.push({ ...base, kind: "gradient", gradient: { opacity: gradient.opacity === void 0 ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } });
-    } else if (gradient && "exportAsync" in node) {
+    } else if (gradient && node.type !== "TEXT" && "exportAsync" in node) {
       const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
       const clipped = clippedBoundsRelativeToFrame(node, frame);
       output.push({ ...base, ...clipped, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png" });
@@ -315,7 +319,7 @@
       const textCase = node.textCase === figma.mixed ? void 0 : node.textCase;
       const paragraphSpacing = node.paragraphSpacing === figma.mixed ? void 0 : node.paragraphSpacing;
       const paragraphIndent = node.paragraphIndent === figma.mixed ? void 0 : node.paragraphIndent;
-      output.push({ ...base, kind: "text", text: node.characters, fontSize: node.fontSize === figma.mixed ? 16 : node.fontSize, fontFamily: font == null ? void 0 : font.family, fontStyle: font == null ? void 0 : font.style, fontWeight, letterSpacing, lineHeight, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical, textAutoResize: node.textAutoResize, textCase, paragraphSpacing, paragraphIndent, color: solidColor(node), renderBounds: renderBoundsRelativeToFrame(node, frame) });
+      output.push({ ...base, kind: "text", text: node.characters, fontSize: node.fontSize === figma.mixed ? 16 : node.fontSize, fontFamily: font == null ? void 0 : font.family, fontStyle: font == null ? void 0 : font.style, fontWeight, letterSpacing, lineHeight, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical, textAutoResize: node.textAutoResize, textCase, paragraphSpacing, paragraphIndent, color: solidColor(node) || ((_a = gradient == null ? void 0 : gradient.gradientStops[0]) == null ? void 0 : _a.color), gradient: gradient ? { opacity: gradient.opacity === void 0 ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } : void 0, renderBounds: renderBoundsRelativeToFrame(node, frame) });
     } else if ("vectorPaths" in node && node.vectorPaths.length > 0) output.push({ ...base, kind: "vector", color: solidColor(node), paths: node.vectorPaths.map((path) => ({ data: path.data, windingRule: path.windingRule })), vectorGeometry: vectorGeometryRelativeToFrame(node, frame) });
     else output.push({ ...base, kind: "unsupported", unsupportedType: node.type });
     onLeaf();

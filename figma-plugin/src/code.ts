@@ -247,16 +247,18 @@ function vectorGeometryRelativeToFrame(node: SceneNode, frame: FrameNode): Bridg
 }
 
 function imageMaskGeometry(node: SceneNode, frame: FrameNode): BridgeLayer["imageMask"] {
-  if (node.type !== "ELLIPSE" && node.type !== "RECTANGLE" && !("vectorPaths" in node && node.vectorPaths.length > 0)) return undefined;
+  const hasVectorPath = "vectorPaths" in node && node.vectorPaths.length > 0;
+  const hasRectangularBounds = node.type === "RECTANGLE" || node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE";
+  if (node.type !== "ELLIPSE" && !hasRectangularBounds && !hasVectorPath) return undefined;
   const geometry = vectorGeometryRelativeToFrame(node, frame);
   if (!geometry) return undefined;
   const width = geometry.localWidth * Math.abs(geometry.scaleX);
   const height = geometry.localHeight * Math.abs(geometry.scaleY);
-  const cornerRadius = node.type === "RECTANGLE" && typeof node.cornerRadius === "number"
+  const cornerRadius = "cornerRadius" in node && typeof node.cornerRadius === "number"
     ? node.cornerRadius * Math.min(Math.abs(geometry.scaleX), Math.abs(geometry.scaleY))
     : undefined;
   return {
-    kind: node.type === "ELLIPSE" ? "ellipse" : node.type === "RECTANGLE" ? "rectangle" : "vector",
+    kind: node.type === "ELLIPSE" ? "ellipse" : hasVectorPath ? "vector" : "rectangle",
     x: geometry.centerX - width / 2,
     y: geometry.centerY - height / 2,
     width,
@@ -307,7 +309,9 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
       output.push({ id: `${node.id}:background`, name: `${node.name} · Background`, kind: "rectangle", x: relative.x, y: relative.y, width: relative.width, height: relative.height, rotation: relative.rotation, opacity: effectiveOpacity, visible: effectiveVisible, blendMode: node.blendMode, color: solidColor(node), stroke: solidStroke(node), cornerRadius, blur: blurEffect(node) });
       onLeaf();
     }
-    let activeMask = inheritedMask;
+    // Figma also masks descendants implicitly when a nested frame/component
+    // has Clip content enabled, even when no child is marked as `isMask`.
+    let activeMask = "clipsContent" in node && node.clipsContent ? node : inheritedMask;
     for (const child of node.children) {
       if (child.isMask) { activeMask = child; continue; }
       await flatten(child, frame, output, onLeaf, effectiveOpacity, effectiveVisible, activeMask);
@@ -331,12 +335,13 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
       if (!("width" in node) || !("height" in node)) throw new Error(`Não foi possível determinar as dimensões da imagem de “${node.name}”.`);
       size = { width: node.width, height: node.height };
     }
-    output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: imageExtension(bytes), imagePlacement: imagePlacement(node, frame, image, size.width, size.height), imageMask: imageMaskGeometry(inheritedMask || node, frame) });
+    const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
+    output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: imageExtension(bytes), imagePlacement: imagePlacement(node, frame, image, size.width, size.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
   }
   else if (gradient && node.type === "RECTANGLE") {
     output.push({ ...base, kind: "gradient", gradient: { opacity: gradient.opacity === undefined ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } });
   }
-  else if (gradient && "exportAsync" in node) {
+  else if (gradient && node.type !== "TEXT" && "exportAsync" in node) {
     const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
     const clipped = clippedBoundsRelativeToFrame(node, frame);
     output.push({ ...base, ...clipped, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png" });
@@ -354,7 +359,7 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
     const textCase = node.textCase === figma.mixed ? undefined : node.textCase;
     const paragraphSpacing = node.paragraphSpacing === figma.mixed ? undefined : node.paragraphSpacing;
     const paragraphIndent = node.paragraphIndent === figma.mixed ? undefined : node.paragraphIndent;
-    output.push({ ...base, kind: "text", text: node.characters, fontSize: node.fontSize === figma.mixed ? 16 : node.fontSize, fontFamily: font?.family, fontStyle: font?.style, fontWeight, letterSpacing, lineHeight, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical, textAutoResize: node.textAutoResize, textCase, paragraphSpacing, paragraphIndent, color: solidColor(node), renderBounds: renderBoundsRelativeToFrame(node, frame) });
+    output.push({ ...base, kind: "text", text: node.characters, fontSize: node.fontSize === figma.mixed ? 16 : node.fontSize, fontFamily: font?.family, fontStyle: font?.style, fontWeight, letterSpacing, lineHeight, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical, textAutoResize: node.textAutoResize, textCase, paragraphSpacing, paragraphIndent, color: solidColor(node) || gradient?.gradientStops[0]?.color, gradient: gradient ? { opacity: gradient.opacity === undefined ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } : undefined, renderBounds: renderBoundsRelativeToFrame(node, frame) });
   }
   else if ("vectorPaths" in node && node.vectorPaths.length > 0) output.push({ ...base, kind: "vector", color: solidColor(node), paths: node.vectorPaths.map((path) => ({ data: path.data, windingRule: path.windingRule })), vectorGeometry: vectorGeometryRelativeToFrame(node, frame) });
   else output.push({ ...base, kind: "unsupported", unsupportedType: node.type });
