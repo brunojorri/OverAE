@@ -337,10 +337,9 @@
     const video = videoFill(node);
     const gradient = linearGradientFill(node);
     if (video) {
-      const linked = linkedMedia[video.videoHash || node.id];
-      if (!linked) throw new Error(`Vincule a m\xEDdia original de \u201C${node.name}\u201D antes de enviar.`);
+      const bytes = await exportNodeWithoutAncestorMasks(node);
       const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : void 0;
-      output.push({ ...base, kind: "video", mediaPath: linked.path, imagePlacement: imagePlacement(node, frame, video, linked.width, linked.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+      output.push({ ...base, rotation: 0, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imagePlacement: renderedImagePlacement(base, bytes), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
     } else if (image && image.imageHash) {
       const figmaImage = figma.getImageByHash(image.imageHash);
       if (!figmaImage) throw new Error(`N\xE3o foi poss\xEDvel recuperar a imagem de \u201C${node.name}\u201D.`);
@@ -401,17 +400,6 @@
     }
     return frame;
   }
-  function firstUnlinkedVideo(nodes) {
-    for (const node of nodes) {
-      const paint = videoFill(node);
-      if (paint && !linkedMedia[paint.videoHash || node.id]) return { node, paint };
-      if ("children" in node) {
-        const nested = firstUnlinkedVideo(node.children);
-        if (nested) return nested;
-      }
-    }
-    return null;
-  }
   async function handleUiMessage(message) {
     if (message.type === "open-instagram") {
       figma.openExternal("https://www.instagram.com/brunojorri_work/");
@@ -456,12 +444,6 @@
     try {
       await restoreLinkedMedia();
       const roots = appendMode ? [selected] : frame.children;
-      const missingVideo = firstUnlinkedVideo(roots);
-      if (missingVideo) {
-        const node = missingVideo.node;
-        figma.ui.postMessage({ type: "media-link-target", nodeId: node.id, mediaKey: missingVideo.paint.videoHash || node.id, name: node.name, width: "width" in node ? node.width : 0, height: "height" in node ? node.height : 0, resumeType: message.type });
-        return;
-      }
       const total = roots.reduce((sum, child) => sum + countLeaves(child), 0);
       let processed = 0;
       figma.ui.postMessage({ type: "progress", value: 8, message: appendMode ? "Preparando a layer\u2026" : "Preparando o frame\u2026" });

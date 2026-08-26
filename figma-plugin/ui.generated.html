@@ -43,9 +43,7 @@
       </button>
       <div class="label">Enviar layer</div>
     </div>
-    <div class="action"><button id="link-media" title="Vincular vídeo original" aria-label="Vincular vídeo original"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg></button><div class="label">Vincular mídia</div></div>
   </div>
-  <input id="media-file" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden>
   <div class="progress"><div id="bar"></div></div>
   <div id="status"></div>
   <footer><button id="author" type="button">By Bruno Jorri</button></footer>
@@ -56,7 +54,6 @@
     const connection = document.getElementById("connection");
     const bridgeUrl = "http://localhost:47831";
     let bridgeToken = "";
-    let mediaTarget = null;
     let operationTimeout = null;
 
     function progress(value, message) {
@@ -99,7 +96,6 @@
     }
     document.getElementById("send-frame").onclick = () => begin("export", "o frame");
     document.getElementById("send-layer").onclick = () => begin("export-layer", "a layer");
-    document.getElementById("link-media").onclick = () => parent.postMessage({ pluginMessage: { type: "prepare-media-link" } }, "*");
     document.getElementById("author").onclick = () => parent.postMessage({ pluginMessage: { type: "open-instagram" } }, "*");
 
     window.onmessage = async (event) => {
@@ -107,12 +103,6 @@
       if (!message) return;
       if (message.type === "progress") { startTimeout(); progress(message.value, message.message); return; }
       if (message.type === "error") { stopTimeout(); busy(false); progress(0, message.message); return; }
-      if (message.type === "media-link-target") { mediaTarget = message; document.getElementById("media-file").click(); return; }
-      if (message.type === "media-link-complete") {
-        if (message.resuming) { startTimeout(); busy(true); progress(18, "Mídia salva. Continuando o envio…"); }
-        else { stopTimeout(); busy(false); progress(100, "Mídia vinculada" + (message.persisted === false ? " nesta sessão" : "") + ": " + message.name); }
-        return;
-      }
       if (message.type !== "scene") return;
       progress(80, "Enviando…");
       if (!bridgeToken && !(await connect())) { stopTimeout(); busy(false); return; }
@@ -132,18 +122,6 @@
         stopTimeout();
         busy(false);
       }
-    };
-    document.getElementById("media-file").onchange = async (event) => {
-      const file = event.target.files && event.target.files[0]; event.target.value = "";
-      if (!file || !mediaTarget) { stopTimeout(); busy(false); progress(0, "Seleção de mídia cancelada"); return; }
-      busy(true); progress(15, "Vinculando mídia original…");
-      try {
-        if (!bridgeToken && !(await connect())) throw new Error("Ponte desconectada");
-        const dimensions = await new Promise((resolve) => { const video = document.createElement("video"), url = URL.createObjectURL(file); video.onloadedmetadata = () => { const value = { width: video.videoWidth, height: video.videoHeight }; URL.revokeObjectURL(url); resolve(value); }; video.onerror = () => { URL.revokeObjectURL(url); resolve({ width: mediaTarget.width, height: mediaTarget.height }); }; video.src = url; });
-        const response = await fetch(bridgeUrl + "/v1/media", { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Bridge-Token": bridgeToken, "X-Media-Id": mediaTarget.mediaKey, "X-File-Name": encodeURIComponent(file.name) }, body: file });
-        const result = await response.json(); if (!response.ok) throw new Error(result.error || "Falha no upload local");
-        parent.postMessage({ pluginMessage: { type: "media-linked", mediaKey: mediaTarget.mediaKey, name: mediaTarget.name, path: result.path, fileName: file.name, width: dimensions.width || mediaTarget.width, height: dimensions.height || mediaTarget.height, resumeType: mediaTarget.resumeType } }, "*");
-      } catch (error) { busy(false); progress(0, "Falha: " + error.message); }
     };
     connect();
   </script>

@@ -390,10 +390,11 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
   const video = videoFill(node);
   const gradient = linearGradientFill(node);
   if (video) {
-    const linked = linkedMedia[video.videoHash || node.id];
-    if (!linked) throw new Error(`Vincule a mídia original de “${node.name}” antes de enviar.`);
+    // Figma exposes a video's hash but not its original bytes. Export the
+    // visible poster frame as a replaceable PNG placeholder instead.
+    const bytes = await exportNodeWithoutAncestorMasks(node);
     const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
-    output.push({ ...base, kind: "video", mediaPath: linked.path, imagePlacement: imagePlacement(node, frame, video, linked.width, linked.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+    output.push({ ...base, rotation: 0, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imagePlacement: renderedImagePlacement(base, bytes), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
   }
   else if (image && image.imageHash) {
     const figmaImage = figma.getImageByHash(image.imageHash);
@@ -517,12 +518,6 @@ async function handleUiMessage(message: any) {
   try {
     await restoreLinkedMedia();
     const roots: readonly SceneNode[] = appendMode ? [selected] : frame.children;
-    const missingVideo = firstUnlinkedVideo(roots);
-    if (missingVideo) {
-      const node = missingVideo.node;
-      figma.ui.postMessage({ type: "media-link-target", nodeId: node.id, mediaKey: missingVideo.paint.videoHash || node.id, name: node.name, width: "width" in node ? node.width : 0, height: "height" in node ? node.height : 0, resumeType: message.type });
-      return;
-    }
     const total = roots.reduce((sum, child) => sum + countLeaves(child), 0);
     let processed = 0;
     figma.ui.postMessage({ type: "progress", value: 8, message: appendMode ? "Preparando a layer…" : "Preparando o frame…" });
