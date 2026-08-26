@@ -183,6 +183,13 @@ function imagePlacement(node: SceneNode, frame: FrameNode, paint: ImagePaint, or
   };
 }
 
+function renderedImagePlacement(base: { x: number; y: number; width: number; height: number }, bytes: Uint8Array): BridgeLayer["imagePlacement"] {
+  // node.exportAsync() already bakes the node rotation and crop into the PNG.
+  // Place those pixels by their rendered bounds instead of rotating twice.
+  const size = imageSizeFromBytes(bytes) || { width: base.width, height: base.height };
+  return { centerX: base.x + base.width / 2, centerY: base.y + base.height / 2, scaleX: base.width / Math.max(1, size.width), scaleY: base.height / Math.max(1, size.height), rotation: 0, originalWidth: size.width, originalHeight: size.height, scaleMode: "RENDERED_FALLBACK" };
+}
+
 function boundsRelativeToFrame(node: SceneNode, frame: FrameNode) {
   const nodeBounds = node.absoluteBoundingBox;
   const frameBounds = frame.absoluteBoundingBox;
@@ -345,7 +352,7 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
     // silently converting the node into an empty rectangle.
     const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
     const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
-    output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+    output.push({ ...base, rotation: 0, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imagePlacement: renderedImagePlacement(base, bytes), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
   }
   else if (gradient && node.type === "RECTANGLE") {
     output.push({ ...base, kind: "gradient", gradient: { opacity: gradient.opacity === undefined ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } });
@@ -362,7 +369,7 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
     // still preserved as the image's track matte.
     const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
     const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
-    output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+    output.push({ ...base, rotation: 0, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imagePlacement: renderedImagePlacement(base, bytes), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
   }
   else if (node.type === "RECTANGLE") {
     const cornerRadius = typeof node.cornerRadius === "number" ? node.cornerRadius : undefined;
