@@ -10,6 +10,7 @@ const PORT = 47831;
 const TOKEN_FILE = path.join(__dirname, ".bridge-token");
 const ASSET_DIR = path.join(__dirname, "assets");
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 110 * 1024 * 1024;
 
 function getToken() {
   if (fs.existsSync(TOKEN_FILE)) return fs.readFileSync(TOKEN_FILE, "utf8").trim();
@@ -23,7 +24,7 @@ let latestScene = null;
 
 function cors(response) {
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Bridge-Token");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Bridge-Token, X-Media-Id, X-File-Name");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 }
 
@@ -73,6 +74,24 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && request.url === "/v1/scene/latest") {
     return latestScene ? send(response, 200, latestScene) : send(response, 404, { error: "Nenhum frame recebido ainda." });
+  }
+
+  if (request.method === "POST" && request.url === "/v1/media") {
+    let size = 0; const chunks = [];
+    request.on("data", (chunk) => { size += chunk.length; if (size > MAX_MEDIA_BYTES) request.destroy(); else chunks.push(chunk); });
+    request.on("end", () => {
+      try {
+        const mediaId = safeFileName(request.headers["x-media-id"] || "media");
+        const suppliedName = decodeURIComponent(String(request.headers["x-file-name"] || "media.mp4"));
+        const extension = path.extname(suppliedName).toLowerCase();
+        if (![".mp4", ".mov", ".webm"].includes(extension)) return send(response, 415, { error: "Formato de vídeo não suportado." });
+        fs.mkdirSync(ASSET_DIR, { recursive: true });
+        const mediaPath = path.resolve(ASSET_DIR, `linked_${mediaId}${extension}`);
+        fs.writeFileSync(mediaPath, Buffer.concat(chunks));
+        send(response, 201, { ok: true, path: mediaPath });
+      } catch (_) { send(response, 400, { error: "Falha ao salvar a mídia local." }); }
+    });
+    return;
   }
 
   if (request.method === "POST" && request.url === "/v1/scene") {

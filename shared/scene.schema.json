@@ -24,7 +24,7 @@
         "type": "object",
         "required": ["name", "kind", "x", "y", "width", "height", "opacity", "visible"],
         "properties": {
-          "kind": { "enum": ["rectangle", "ellipse", "text", "vector", "gradient", "image", "unsupported"] },
+          "kind": { "enum": ["rectangle", "ellipse", "text", "vector", "gradient", "image", "video", "unsupported"] },
           "blendMode": { "type": "string" },
           "blur": { "type": "object" },
           "renderBounds": { "type": "object" },

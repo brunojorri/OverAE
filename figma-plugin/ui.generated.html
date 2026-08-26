@@ -12,8 +12,8 @@
     .brand { font-size: 13px; font-weight: 700; letter-spacing: -.2px; }
     .connection { width: 7px; height: 7px; border-radius: 50%; background: #777; box-shadow: 0 0 0 3px #242424; }
     .connection.online { background: #52d273; }
-    .actions { display: flex; justify-content: center; gap: 22px; }
-    .action { width: 72px; text-align: center; }
+    .actions { display: flex; justify-content: center; gap: 7px; }
+    .action { width: 66px; text-align: center; }
     button { display: grid; place-items: center; width: 52px; height: 48px; margin: 0 auto 6px; padding: 0; border: 1px solid #383838; border-radius: 10px; background: #252525; color: #f5f5f5; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
     button:hover { background: #303030; border-color: #565656; }
     button:active { transform: scale(.96); }
@@ -43,7 +43,9 @@
       </button>
       <div class="label">Enviar layer</div>
     </div>
+    <div class="action"><button id="link-media" title="Vincular vídeo original" aria-label="Vincular vídeo original"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg></button><div class="label">Vincular mídia</div></div>
   </div>
+  <input id="media-file" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden>
   <div class="progress"><div id="bar"></div></div>
   <div id="status"></div>
   <footer><button id="author" type="button">By Bruno Jorri</button></footer>
@@ -54,6 +56,7 @@
     const connection = document.getElementById("connection");
     const bridgeUrl = "http://localhost:47831";
     let bridgeToken = "";
+    let mediaTarget = null;
 
     function progress(value, message) {
       bar.style.width = Math.max(0, Math.min(100, value)) + "%";
@@ -83,6 +86,7 @@
     }
     document.getElementById("send-frame").onclick = () => begin("export", "o frame");
     document.getElementById("send-layer").onclick = () => begin("export-layer", "a layer");
+    document.getElementById("link-media").onclick = () => parent.postMessage({ pluginMessage: { type: "prepare-media-link" } }, "*");
     document.getElementById("author").onclick = () => parent.postMessage({ pluginMessage: { type: "open-instagram" } }, "*");
 
     window.onmessage = async (event) => {
@@ -90,6 +94,8 @@
       if (!message) return;
       if (message.type === "progress") { progress(message.value, message.message); return; }
       if (message.type === "error") { busy(false); progress(0, message.message); return; }
+      if (message.type === "media-link-target") { mediaTarget = message; document.getElementById("media-file").click(); return; }
+      if (message.type === "media-link-complete") { busy(false); progress(100, "Mídia vinculada: " + message.name); return; }
       if (message.type !== "scene") return;
       progress(80, "Enviando…");
       if (!bridgeToken && !(await connect())) { busy(false); return; }
@@ -108,6 +114,18 @@
       } finally {
         busy(false);
       }
+    };
+    document.getElementById("media-file").onchange = async (event) => {
+      const file = event.target.files && event.target.files[0]; event.target.value = "";
+      if (!file || !mediaTarget) return;
+      busy(true); progress(15, "Vinculando mídia original…");
+      try {
+        if (!bridgeToken && !(await connect())) throw new Error("Ponte desconectada");
+        const dimensions = await new Promise((resolve) => { const video = document.createElement("video"), url = URL.createObjectURL(file); video.onloadedmetadata = () => { const value = { width: video.videoWidth, height: video.videoHeight }; URL.revokeObjectURL(url); resolve(value); }; video.onerror = () => { URL.revokeObjectURL(url); resolve({ width: mediaTarget.width, height: mediaTarget.height }); }; video.src = url; });
+        const response = await fetch(bridgeUrl + "/v1/media", { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Bridge-Token": bridgeToken, "X-Media-Id": mediaTarget.mediaKey, "X-File-Name": encodeURIComponent(file.name) }, body: file });
+        const result = await response.json(); if (!response.ok) throw new Error(result.error || "Falha no upload local");
+        parent.postMessage({ pluginMessage: { type: "media-linked", mediaKey: mediaTarget.mediaKey, name: mediaTarget.name, path: result.path, fileName: file.name, width: dimensions.width || mediaTarget.width, height: dimensions.height || mediaTarget.height } }, "*");
+      } catch (error) { busy(false); progress(0, "Falha: " + error.message); }
     };
     connect();
   </script>

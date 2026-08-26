@@ -1,6 +1,7 @@
 (() => {
   // src/code.ts
   figma.showUI(__html__, { width: 240, height: 202, title: "OverAE" });
+  var linkedMedia = {};
   function firstSolidPaint(paints) {
     if (!paints) return void 0;
     return paints.find((paint) => paint.type === "SOLID" && paint.visible !== false);
@@ -34,6 +35,10 @@
   function imageFill(node) {
     if (!("fills" in node) || !Array.isArray(node.fills)) return void 0;
     return node.fills.find((paint) => paint.type === "IMAGE" && paint.visible !== false);
+  }
+  function videoFill(node) {
+    if (!("fills" in node) || !Array.isArray(node.fills)) return void 0;
+    return node.fills.find((paint) => paint.type === "VIDEO" && paint.visible !== false);
   }
   function linearGradientFill(node) {
     if (!("fills" in node) || !Array.isArray(node.fills)) return void 0;
@@ -114,8 +119,9 @@
     if (!("width" in node) || !("height" in node)) return void 0;
     const nodeWidth = node.width, nodeHeight = node.height;
     let local;
-    if (paint.scaleMode === "CROP" && paint.imageTransform) {
-      const matrix2 = paint.imageTransform;
+    const cropTransform = paint.type === "IMAGE" ? paint.imageTransform : paint.videoTransform;
+    if (paint.scaleMode === "CROP" && cropTransform) {
+      const matrix2 = cropTransform;
       local = [
         [nodeWidth * matrix2[0][0] / originalWidth, nodeWidth * matrix2[0][1] / originalHeight, nodeWidth * matrix2[0][2]],
         [nodeHeight * matrix2[1][0] / originalWidth, nodeHeight * matrix2[1][1] / originalHeight, nodeHeight * matrix2[1][2]]
@@ -313,8 +319,14 @@
     const rotation = relative.rotation;
     const base = { id: node.id, name: node.name, x, y, width: relative.width, height: relative.height, rotation, opacity: effectiveOpacity, visible: effectiveVisible, blendMode: effectivePaintBlendMode(node) || node.blendMode, stroke: solidStroke(node), blur: blurEffect(node) };
     const image = imageFill(node);
+    const video = videoFill(node);
     const gradient = linearGradientFill(node);
-    if (image && image.imageHash) {
+    if (video) {
+      const linked = linkedMedia[video.videoHash || node.id];
+      if (!linked) throw new Error(`Vincule a m\xEDdia original de \u201C${node.name}\u201D antes de enviar.`);
+      const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : void 0;
+      output.push({ ...base, kind: "video", mediaPath: linked.path, imagePlacement: imagePlacement(node, frame, video, linked.width, linked.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+    } else if (image && image.imageHash) {
       const figmaImage = figma.getImageByHash(image.imageHash);
       if (!figmaImage) throw new Error(`N\xE3o foi poss\xEDvel recuperar a imagem de \u201C${node.name}\u201D.`);
       const bytes = await figmaImage.getBytesAsync();
@@ -379,6 +391,26 @@
       figma.openExternal("https://www.instagram.com/brunojorri_work/");
       return;
     }
+    if (message.type === "prepare-media-link") {
+      const selection2 = figma.currentPage.selection;
+      if (selection2.length !== 1) {
+        figma.ui.postMessage({ type: "error", message: "Selecione exatamente uma layer de v\xEDdeo." });
+        return;
+      }
+      const node = selection2[0], paint = videoFill(node);
+      if (!paint) {
+        figma.ui.postMessage({ type: "error", message: "A layer selecionada n\xE3o possui um fill de v\xEDdeo." });
+        return;
+      }
+      figma.ui.postMessage({ type: "media-link-target", nodeId: node.id, mediaKey: paint.videoHash || node.id, name: node.name, width: "width" in node ? node.width : 0, height: "height" in node ? node.height : 0 });
+      return;
+    }
+    if (message.type === "media-linked") {
+      linkedMedia[message.mediaKey] = { path: message.path, width: message.width, height: message.height, fileName: message.fileName };
+      await figma.clientStorage.setAsync("overAE.videoLinks", linkedMedia);
+      figma.ui.postMessage({ type: "media-link-complete", name: message.name });
+      return;
+    }
     if (message.type !== "export" && message.type !== "export-layer") return;
     const selection = figma.currentPage.selection;
     if (selection.length !== 1) {
@@ -392,6 +424,7 @@
       figma.ui.postMessage({ type: "error", message: appendMode ? "A layer precisa estar dentro de um frame." : "Selecione exatamente um frame no Figma." });
       return;
     }
+    linkedMedia = await figma.clientStorage.getAsync("overAE.videoLinks") || {};
     const layers = [];
     try {
       const roots = appendMode ? [selected] : frame.children;

@@ -1,7 +1,7 @@
 figma.showUI(__html__, { width: 240, height: 202, title: "OverAE" });
 
 type BridgeLayer = {
-  id: string; name: string; kind: "rectangle" | "ellipse" | "text" | "vector" | "gradient" | "image" | "unsupported";
+  id: string; name: string; kind: "rectangle" | "ellipse" | "text" | "vector" | "gradient" | "image" | "video" | "unsupported";
   x: number; y: number; width: number; height: number; rotation: number;
   opacity: number; visible: boolean; color?: { r: number; g: number; b: number; a: number };
   blendMode?: string; cornerRadius?: number; paths?: Array<{ data: string; windingRule: string }>;
@@ -11,7 +11,7 @@ type BridgeLayer = {
   textAlignHorizontal?: string; textAlignVertical?: string; textAutoResize?: string; textCase?: string;
   textSegments?: Array<{ start: number; end: number; fontFamily: string; fontStyle: string; fontWeight: number; fontSize: number; color?: { r: number; g: number; b: number; a: number } }>;
   paragraphSpacing?: number; paragraphIndent?: number; unsupportedType?: string;
-  imageData?: string; imageExtension?: "png" | "jpg" | "gif" | "webp";
+  imageData?: string; imageExtension?: "png" | "jpg" | "gif" | "webp"; mediaPath?: string;
   imagePlacement?: { centerX: number; centerY: number; scaleX: number; scaleY: number; rotation: number; originalWidth: number; originalHeight: number; scaleMode: string };
   imageMask?: { kind: "ellipse" | "rectangle" | "vector"; x: number; y: number; width: number; height: number; rotation: number; cornerRadius?: number; paths?: Array<{ data: string; windingRule: string }>; vectorGeometry?: BridgeLayer["vectorGeometry"] };
   blur?: { type: "LAYER_BLUR" | "BACKGROUND_BLUR"; radius: number };
@@ -19,6 +19,8 @@ type BridgeLayer = {
   vectorGeometry?: { localWidth: number; localHeight: number; scaleX: number; scaleY: number; centerX: number; centerY: number };
   gradient?: { opacity: number; transform: Transform; stops: Array<{ position: number; color: { r: number; g: number; b: number; a: number } }> };
 };
+type LinkedMedia = { path: string; width: number; height: number; fileName: string };
+let linkedMedia: Record<string, LinkedMedia> = {};
 
 function firstSolidPaint(paints: readonly Paint[] | undefined) {
   if (!paints) return undefined;
@@ -59,6 +61,10 @@ function solidStroke(node: SceneNode): BridgeLayer["stroke"] {
 function imageFill(node: SceneNode): ImagePaint | undefined {
   if (!("fills" in node) || !Array.isArray(node.fills)) return undefined;
   return node.fills.find((paint): paint is ImagePaint => paint.type === "IMAGE" && paint.visible !== false);
+}
+function videoFill(node: SceneNode): VideoPaint | undefined {
+  if (!("fills" in node) || !Array.isArray(node.fills)) return undefined;
+  return node.fills.find((paint): paint is VideoPaint => paint.type === "VIDEO" && paint.visible !== false);
 }
 
 function linearGradientFill(node: SceneNode) {
@@ -139,12 +145,13 @@ function multiplyMatrices(parent: Transform, child: Matrix): Matrix {
   ];
 }
 
-function imagePlacement(node: SceneNode, frame: FrameNode, paint: ImagePaint, originalWidth: number, originalHeight: number): BridgeLayer["imagePlacement"] {
+function imagePlacement(node: SceneNode, frame: FrameNode, paint: ImagePaint | VideoPaint, originalWidth: number, originalHeight: number): BridgeLayer["imagePlacement"] {
   if (!("width" in node) || !("height" in node)) return undefined;
   const nodeWidth = node.width, nodeHeight = node.height;
   let local: Matrix;
-  if (paint.scaleMode === "CROP" && paint.imageTransform) {
-    const matrix = paint.imageTransform;
+  const cropTransform = paint.type === "IMAGE" ? paint.imageTransform : paint.videoTransform;
+  if (paint.scaleMode === "CROP" && cropTransform) {
+    const matrix = cropTransform;
     local = [
       [nodeWidth * matrix[0][0] / originalWidth, nodeWidth * matrix[0][1] / originalHeight, nodeWidth * matrix[0][2]],
       [nodeHeight * matrix[1][0] / originalWidth, nodeHeight * matrix[1][1] / originalHeight, nodeHeight * matrix[1][2]]
@@ -361,8 +368,15 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
   const rotation = relative.rotation;
   const base = { id: node.id, name: node.name, x, y, width: relative.width, height: relative.height, rotation, opacity: effectiveOpacity, visible: effectiveVisible, blendMode: effectivePaintBlendMode(node) || node.blendMode, stroke: solidStroke(node), blur: blurEffect(node) };
   const image = imageFill(node);
+  const video = videoFill(node);
   const gradient = linearGradientFill(node);
-  if (image && image.imageHash) {
+  if (video) {
+    const linked = linkedMedia[video.videoHash || node.id];
+    if (!linked) throw new Error(`Vincule a mídia original de “${node.name}” antes de enviar.`);
+    const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
+    output.push({ ...base, kind: "video", mediaPath: linked.path, imagePlacement: imagePlacement(node, frame, video, linked.width, linked.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+  }
+  else if (image && image.imageHash) {
     const figmaImage = figma.getImageByHash(image.imageHash);
     if (!figmaImage) throw new Error(`Não foi possível recuperar a imagem de “${node.name}”.`);
     const bytes = await figmaImage.getBytesAsync();
@@ -439,6 +453,20 @@ figma.ui.onmessage = async (message) => {
     figma.openExternal("https://www.instagram.com/brunojorri_work/");
     return;
   }
+  if (message.type === "prepare-media-link") {
+    const selection = figma.currentPage.selection;
+    if (selection.length !== 1) { figma.ui.postMessage({ type: "error", message: "Selecione exatamente uma layer de vídeo." }); return; }
+    const node = selection[0], paint = videoFill(node);
+    if (!paint) { figma.ui.postMessage({ type: "error", message: "A layer selecionada não possui um fill de vídeo." }); return; }
+    figma.ui.postMessage({ type: "media-link-target", nodeId: node.id, mediaKey: paint.videoHash || node.id, name: node.name, width: "width" in node ? node.width : 0, height: "height" in node ? node.height : 0 });
+    return;
+  }
+  if (message.type === "media-linked") {
+    linkedMedia[message.mediaKey] = { path: message.path, width: message.width, height: message.height, fileName: message.fileName };
+    await figma.clientStorage.setAsync("overAE.videoLinks", linkedMedia);
+    figma.ui.postMessage({ type: "media-link-complete", name: message.name });
+    return;
+  }
   if (message.type !== "export" && message.type !== "export-layer") return;
   const selection = figma.currentPage.selection;
   if (selection.length !== 1) {
@@ -452,6 +480,7 @@ figma.ui.onmessage = async (message) => {
     figma.ui.postMessage({ type: "error", message: appendMode ? "A layer precisa estar dentro de um frame." : "Selecione exatamente um frame no Figma." });
     return;
   }
+  linkedMedia = await figma.clientStorage.getAsync("overAE.videoLinks") || {};
   const layers: BridgeLayer[] = [];
   try {
     const roots: readonly SceneNode[] = appendMode ? [selected] : frame.children;
