@@ -22,6 +22,25 @@ type BridgeLayer = {
 type LinkedMedia = { path: string; width: number; height: number; fileName: string };
 let linkedMedia: Record<string, LinkedMedia> = {};
 
+async function restoreLinkedMedia(): Promise<void> {
+  try {
+    const stored = await figma.clientStorage.getAsync("overAE.videoLinks");
+    if (stored && typeof stored === "object") linkedMedia = { ...stored, ...linkedMedia };
+  } catch (_) {
+    // Some Figma environments can temporarily deny clientStorage. The current
+    // session remains usable and media can still be linked again if necessary.
+  }
+}
+
+async function persistLinkedMedia(): Promise<boolean> {
+  try {
+    await figma.clientStorage.setAsync("overAE.videoLinks", linkedMedia);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function firstSolidPaint(paints: readonly Paint[] | undefined) {
   if (!paints) return undefined;
   return paints.find((paint) => paint.type === "SOLID" && paint.visible !== false);
@@ -463,8 +482,8 @@ async function handleUiMessage(message: any) {
   }
   if (message.type === "media-linked") {
     linkedMedia[message.mediaKey] = { path: message.path, width: message.width, height: message.height, fileName: message.fileName };
-    await figma.clientStorage.setAsync("overAE.videoLinks", linkedMedia);
-    figma.ui.postMessage({ type: "media-link-complete", name: message.name });
+    const persisted = await persistLinkedMedia();
+    figma.ui.postMessage({ type: "media-link-complete", name: message.name, persisted });
     return;
   }
   if (message.type !== "export" && message.type !== "export-layer") return;
@@ -482,7 +501,7 @@ async function handleUiMessage(message: any) {
   }
   const layers: BridgeLayer[] = [];
   try {
-    linkedMedia = await figma.clientStorage.getAsync("overAE.videoLinks") || {};
+    await restoreLinkedMedia();
     const roots: readonly SceneNode[] = appendMode ? [selected] : frame.children;
     const total = roots.reduce((sum, child) => sum + countLeaves(child), 0);
     let processed = 0;

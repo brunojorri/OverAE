@@ -108,7 +108,7 @@
       if (message.type === "progress") { startTimeout(); progress(message.value, message.message); return; }
       if (message.type === "error") { stopTimeout(); busy(false); progress(0, message.message); return; }
       if (message.type === "media-link-target") { mediaTarget = message; document.getElementById("media-file").click(); return; }
-      if (message.type === "media-link-complete") { stopTimeout(); busy(false); progress(100, "Mídia vinculada: " + message.name); return; }
+      if (message.type === "media-link-complete") { stopTimeout(); busy(false); progress(100, "Mídia vinculada" + (message.persisted === false ? " nesta sessão" : "") + ": " + message.name); return; }
       if (message.type !== "scene") return;
       progress(80, "Enviando…");
       if (!bridgeToken && !(await connect())) { stopTimeout(); busy(false); return; }

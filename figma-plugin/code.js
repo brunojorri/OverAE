@@ -2,6 +2,21 @@
   // src/code.ts
   figma.showUI(__html__, { width: 240, height: 202, title: "OverAE" });
   var linkedMedia = {};
+  async function restoreLinkedMedia() {
+    try {
+      const stored = await figma.clientStorage.getAsync("overAE.videoLinks");
+      if (stored && typeof stored === "object") linkedMedia = { ...stored, ...linkedMedia };
+    } catch (_) {
+    }
+  }
+  async function persistLinkedMedia() {
+    try {
+      await figma.clientStorage.setAsync("overAE.videoLinks", linkedMedia);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
   function firstSolidPaint(paints) {
     if (!paints) return void 0;
     return paints.find((paint) => paint.type === "SOLID" && paint.visible !== false);
@@ -407,8 +422,8 @@
     }
     if (message.type === "media-linked") {
       linkedMedia[message.mediaKey] = { path: message.path, width: message.width, height: message.height, fileName: message.fileName };
-      await figma.clientStorage.setAsync("overAE.videoLinks", linkedMedia);
-      figma.ui.postMessage({ type: "media-link-complete", name: message.name });
+      const persisted = await persistLinkedMedia();
+      figma.ui.postMessage({ type: "media-link-complete", name: message.name, persisted });
       return;
     }
     if (message.type !== "export" && message.type !== "export-layer") return;
@@ -426,7 +441,7 @@
     }
     const layers = [];
     try {
-      linkedMedia = await figma.clientStorage.getAsync("overAE.videoLinks") || {};
+      await restoreLinkedMedia();
       const roots = appendMode ? [selected] : frame.children;
       const total = roots.reduce((sum, child) => sum + countLeaves(child), 0);
       let processed = 0;
