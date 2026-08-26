@@ -467,6 +467,18 @@ function outermostFrame(node: SceneNode): FrameNode | null {
   return frame;
 }
 
+function firstUnlinkedVideo(nodes: readonly SceneNode[]): { node: SceneNode; paint: VideoPaint } | null {
+  for (const node of nodes) {
+    const paint = videoFill(node);
+    if (paint && !linkedMedia[paint.videoHash || node.id]) return { node, paint };
+    if ("children" in node) {
+      const nested = firstUnlinkedVideo(node.children);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 async function handleUiMessage(message: any) {
   if (message.type === "open-instagram") {
     figma.openExternal("https://www.instagram.com/brunojorri_work/");
@@ -483,7 +495,9 @@ async function handleUiMessage(message: any) {
   if (message.type === "media-linked") {
     linkedMedia[message.mediaKey] = { path: message.path, width: message.width, height: message.height, fileName: message.fileName };
     const persisted = await persistLinkedMedia();
-    figma.ui.postMessage({ type: "media-link-complete", name: message.name, persisted });
+    const resuming = message.resumeType === "export" || message.resumeType === "export-layer";
+    figma.ui.postMessage({ type: "media-link-complete", name: message.name, persisted, resuming });
+    if (resuming) await handleUiMessage({ type: message.resumeType });
     return;
   }
   if (message.type !== "export" && message.type !== "export-layer") return;
@@ -503,6 +517,12 @@ async function handleUiMessage(message: any) {
   try {
     await restoreLinkedMedia();
     const roots: readonly SceneNode[] = appendMode ? [selected] : frame.children;
+    const missingVideo = firstUnlinkedVideo(roots);
+    if (missingVideo) {
+      const node = missingVideo.node;
+      figma.ui.postMessage({ type: "media-link-target", nodeId: node.id, mediaKey: missingVideo.paint.videoHash || node.id, name: node.name, width: "width" in node ? node.width : 0, height: "height" in node ? node.height : 0, resumeType: message.type });
+      return;
+    }
     const total = roots.reduce((sum, child) => sum + countLeaves(child), 0);
     let processed = 0;
     figma.ui.postMessage({ type: "progress", value: 8, message: appendMode ? "Preparando a layer…" : "Preparando o frame…" });

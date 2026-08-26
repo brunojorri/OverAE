@@ -108,7 +108,11 @@
       if (message.type === "progress") { startTimeout(); progress(message.value, message.message); return; }
       if (message.type === "error") { stopTimeout(); busy(false); progress(0, message.message); return; }
       if (message.type === "media-link-target") { mediaTarget = message; document.getElementById("media-file").click(); return; }
-      if (message.type === "media-link-complete") { stopTimeout(); busy(false); progress(100, "Mídia vinculada" + (message.persisted === false ? " nesta sessão" : "") + ": " + message.name); return; }
+      if (message.type === "media-link-complete") {
+        if (message.resuming) { startTimeout(); busy(true); progress(18, "Mídia salva. Continuando o envio…"); }
+        else { stopTimeout(); busy(false); progress(100, "Mídia vinculada" + (message.persisted === false ? " nesta sessão" : "") + ": " + message.name); }
+        return;
+      }
       if (message.type !== "scene") return;
       progress(80, "Enviando…");
       if (!bridgeToken && !(await connect())) { stopTimeout(); busy(false); return; }
@@ -131,14 +135,14 @@
     };
     document.getElementById("media-file").onchange = async (event) => {
       const file = event.target.files && event.target.files[0]; event.target.value = "";
-      if (!file || !mediaTarget) return;
+      if (!file || !mediaTarget) { stopTimeout(); busy(false); progress(0, "Seleção de mídia cancelada"); return; }
       busy(true); progress(15, "Vinculando mídia original…");
       try {
         if (!bridgeToken && !(await connect())) throw new Error("Ponte desconectada");
         const dimensions = await new Promise((resolve) => { const video = document.createElement("video"), url = URL.createObjectURL(file); video.onloadedmetadata = () => { const value = { width: video.videoWidth, height: video.videoHeight }; URL.revokeObjectURL(url); resolve(value); }; video.onerror = () => { URL.revokeObjectURL(url); resolve({ width: mediaTarget.width, height: mediaTarget.height }); }; video.src = url; });
         const response = await fetch(bridgeUrl + "/v1/media", { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Bridge-Token": bridgeToken, "X-Media-Id": mediaTarget.mediaKey, "X-File-Name": encodeURIComponent(file.name) }, body: file });
         const result = await response.json(); if (!response.ok) throw new Error(result.error || "Falha no upload local");
-        parent.postMessage({ pluginMessage: { type: "media-linked", mediaKey: mediaTarget.mediaKey, name: mediaTarget.name, path: result.path, fileName: file.name, width: dimensions.width || mediaTarget.width, height: dimensions.height || mediaTarget.height } }, "*");
+        parent.postMessage({ pluginMessage: { type: "media-linked", mediaKey: mediaTarget.mediaKey, name: mediaTarget.name, path: result.path, fileName: file.name, width: dimensions.width || mediaTarget.width, height: dimensions.height || mediaTarget.height, resumeType: mediaTarget.resumeType } }, "*");
       } catch (error) { busy(false); progress(0, "Falha: " + error.message); }
     };
     connect();
