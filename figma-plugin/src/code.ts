@@ -193,9 +193,20 @@ function renderedImagePlacement(base: { x: number; y: number; width: number; hei
 
 async function exportNodeWithoutAncestorMasks(node: SceneNode): Promise<Uint8Array> {
   // exportAsync() honors masks/clipping from the node's ancestors. Export a
-  // temporary detached clone to recover the complete image rectangle first.
+  // fresh rectangle containing only the image paints, then fall back to a
+  // detached clone. A fresh node cannot inherit a sibling mask or frame clip.
+  let isolated: RectangleNode | undefined;
   let clone: SceneNode | undefined;
   try {
+    if (node.type === "RECTANGLE" && Array.isArray(node.fills) && node.fills.length) {
+      isolated = figma.createRectangle();
+      isolated.resize(Math.max(1, node.width), Math.max(1, node.height));
+      isolated.fills = node.fills;
+      isolated.strokes = [];
+      isolated.effects = [];
+      isolated.rotation = node.rotation;
+      return await isolated.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+    }
     clone = node.clone();
     figma.currentPage.appendChild(clone);
     if ("isMask" in clone && clone.isMask) clone.isMask = false;
@@ -203,6 +214,7 @@ async function exportNodeWithoutAncestorMasks(node: SceneNode): Promise<Uint8Arr
   } catch (_) {
     return await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
   } finally {
+    if (isolated && !isolated.removed) isolated.remove();
     if (clone && !clone.removed) clone.remove();
   }
 }

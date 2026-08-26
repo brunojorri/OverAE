@@ -157,8 +157,18 @@
     return { centerX: base.x + base.width / 2, centerY: base.y + base.height / 2, scaleX: scale, scaleY: scale, rotation: 0, originalWidth: size.width, originalHeight: size.height, scaleMode: "RENDERED_FALLBACK" };
   }
   async function exportNodeWithoutAncestorMasks(node) {
+    let isolated;
     let clone;
     try {
+      if (node.type === "RECTANGLE" && Array.isArray(node.fills) && node.fills.length) {
+        isolated = figma.createRectangle();
+        isolated.resize(Math.max(1, node.width), Math.max(1, node.height));
+        isolated.fills = node.fills;
+        isolated.strokes = [];
+        isolated.effects = [];
+        isolated.rotation = node.rotation;
+        return await isolated.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+      }
       clone = node.clone();
       figma.currentPage.appendChild(clone);
       if ("isMask" in clone && clone.isMask) clone.isMask = false;
@@ -166,6 +176,7 @@
     } catch (_) {
       return await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
     } finally {
+      if (isolated && !isolated.removed) isolated.remove();
       if (clone && !clone.removed) clone.remove();
     }
   }
