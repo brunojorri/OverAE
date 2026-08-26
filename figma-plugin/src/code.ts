@@ -187,7 +187,24 @@ function renderedImagePlacement(base: { x: number; y: number; width: number; hei
   // node.exportAsync() already bakes the node rotation and crop into the PNG.
   // Place those pixels by their rendered bounds instead of rotating twice.
   const size = imageSizeFromBytes(bytes) || { width: base.width, height: base.height };
-  return { centerX: base.x + base.width / 2, centerY: base.y + base.height / 2, scaleX: base.width / Math.max(1, size.width), scaleY: base.height / Math.max(1, size.height), rotation: 0, originalWidth: size.width, originalHeight: size.height, scaleMode: "RENDERED_FALLBACK" };
+  const scale = Math.max(base.width / Math.max(1, size.width), base.height / Math.max(1, size.height));
+  return { centerX: base.x + base.width / 2, centerY: base.y + base.height / 2, scaleX: scale, scaleY: scale, rotation: 0, originalWidth: size.width, originalHeight: size.height, scaleMode: "RENDERED_FALLBACK" };
+}
+
+async function exportNodeWithoutAncestorMasks(node: SceneNode): Promise<Uint8Array> {
+  // exportAsync() honors masks/clipping from the node's ancestors. Export a
+  // temporary detached clone to recover the complete image rectangle first.
+  let clone: SceneNode | undefined;
+  try {
+    clone = node.clone();
+    figma.currentPage.appendChild(clone);
+    if ("isMask" in clone && clone.isMask) clone.isMask = false;
+    return await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+  } catch (_) {
+    return await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+  } finally {
+    if (clone && !clone.removed) clone.remove();
+  }
 }
 
 function boundsRelativeToFrame(node: SceneNode, frame: FrameNode) {
@@ -350,7 +367,7 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
     // Some imported/library images are visible in Figma while their imageHash
     // is unavailable to plugins. Preserve the rendered pixels instead of
     // silently converting the node into an empty rectangle.
-    const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+    const bytes = await exportNodeWithoutAncestorMasks(node);
     const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
     output.push({ ...base, rotation: 0, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imagePlacement: renderedImagePlacement(base, bytes), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
   }
@@ -358,7 +375,7 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
     output.push({ ...base, kind: "gradient", gradient: { opacity: gradient.opacity === undefined ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } });
   }
   else if (gradient && node.type !== "TEXT" && "exportAsync" in node) {
-    const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+    const bytes = await exportNodeWithoutAncestorMasks(node);
     const clipped = clippedBoundsRelativeToFrame(node, frame);
     output.push({ ...base, ...clipped, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png" });
   }

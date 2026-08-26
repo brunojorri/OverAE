@@ -153,7 +153,21 @@
   }
   function renderedImagePlacement(base, bytes) {
     const size = imageSizeFromBytes(bytes) || { width: base.width, height: base.height };
-    return { centerX: base.x + base.width / 2, centerY: base.y + base.height / 2, scaleX: base.width / Math.max(1, size.width), scaleY: base.height / Math.max(1, size.height), rotation: 0, originalWidth: size.width, originalHeight: size.height, scaleMode: "RENDERED_FALLBACK" };
+    const scale = Math.max(base.width / Math.max(1, size.width), base.height / Math.max(1, size.height));
+    return { centerX: base.x + base.width / 2, centerY: base.y + base.height / 2, scaleX: scale, scaleY: scale, rotation: 0, originalWidth: size.width, originalHeight: size.height, scaleMode: "RENDERED_FALLBACK" };
+  }
+  async function exportNodeWithoutAncestorMasks(node) {
+    let clone;
+    try {
+      clone = node.clone();
+      figma.currentPage.appendChild(clone);
+      if ("isMask" in clone && clone.isMask) clone.isMask = false;
+      return await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+    } catch (_) {
+      return await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+    } finally {
+      if (clone && !clone.removed) clone.remove();
+    }
   }
   function boundsRelativeToFrame(node, frame) {
     const nodeBounds = node.absoluteBoundingBox;
@@ -306,13 +320,13 @@
       const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : void 0;
       output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: imageExtension(bytes), imagePlacement: imagePlacement(node, frame, image, size.width, size.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
     } else if (image && "exportAsync" in node) {
-      const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+      const bytes = await exportNodeWithoutAncestorMasks(node);
       const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : void 0;
       output.push({ ...base, rotation: 0, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imagePlacement: renderedImagePlacement(base, bytes), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
     } else if (gradient && node.type === "RECTANGLE") {
       output.push({ ...base, kind: "gradient", gradient: { opacity: gradient.opacity === void 0 ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } });
     } else if (gradient && node.type !== "TEXT" && "exportAsync" in node) {
-      const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+      const bytes = await exportNodeWithoutAncestorMasks(node);
       const clipped = clippedBoundsRelativeToFrame(node, frame);
       output.push({ ...base, ...clipped, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png" });
     } else if (node.type === "RECTANGLE" && !solidColor(node) && !solidStroke(node) && "exportAsync" in node) {
