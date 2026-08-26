@@ -258,7 +258,7 @@
     return { opacity, visible };
   }
   async function flatten(node, frame, output, onLeaf, inheritedOpacity = 1, inheritedVisible = true, inheritedMask) {
-    var _a;
+    var _a, _b, _c, _d, _e, _f;
     const effectiveOpacity = inheritedOpacity * node.opacity;
     const effectiveVisible = inheritedVisible && node.visible;
     if ("children" in node) {
@@ -311,6 +311,10 @@
       const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
       const clipped = clippedBoundsRelativeToFrame(node, frame);
       output.push({ ...base, ...clipped, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png" });
+    } else if (node.type === "RECTANGLE" && !solidColor(node) && !solidStroke(node) && "exportAsync" in node) {
+      const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+      const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : void 0;
+      output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
     } else if (node.type === "RECTANGLE") {
       const cornerRadius = typeof node.cornerRadius === "number" ? node.cornerRadius : void 0;
       output.push({ ...base, kind: "rectangle", color: solidColor(node), cornerRadius });
@@ -323,7 +327,11 @@
       const textCase = node.textCase === figma.mixed ? void 0 : node.textCase;
       const paragraphSpacing = node.paragraphSpacing === figma.mixed ? void 0 : node.paragraphSpacing;
       const paragraphIndent = node.paragraphIndent === figma.mixed ? void 0 : node.paragraphIndent;
-      output.push({ ...base, kind: "text", text: node.characters, fontSize: node.fontSize === figma.mixed ? 16 : node.fontSize, fontFamily: font == null ? void 0 : font.family, fontStyle: font == null ? void 0 : font.style, fontWeight, letterSpacing, lineHeight, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical, textAutoResize: node.textAutoResize, textCase, paragraphSpacing, paragraphIndent, color: solidColor(node) || ((_a = gradient == null ? void 0 : gradient.gradientStops[0]) == null ? void 0 : _a.color), gradient: gradient ? { opacity: gradient.opacity === void 0 ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } : void 0, renderBounds: renderBoundsRelativeToFrame(node, frame) });
+      const textSegments = node.getStyledTextSegments(["fontName", "fontWeight", "fontSize", "fills"]).map((segment) => {
+        const segmentFill = firstSolidPaint(segment.fills);
+        return { start: segment.start, end: segment.end, fontFamily: segment.fontName.family, fontStyle: segment.fontName.style, fontWeight: segment.fontWeight, fontSize: segment.fontSize, color: segmentFill && segmentFill.type === "SOLID" ? { ...segmentFill.color, a: segmentFill.opacity === void 0 ? 1 : segmentFill.opacity } : void 0 };
+      });
+      output.push({ ...base, kind: "text", text: node.characters, fontSize: node.fontSize === figma.mixed ? ((_a = textSegments[0]) == null ? void 0 : _a.fontSize) || 16 : node.fontSize, fontFamily: (font == null ? void 0 : font.family) || ((_b = textSegments[0]) == null ? void 0 : _b.fontFamily), fontStyle: (font == null ? void 0 : font.style) || ((_c = textSegments[0]) == null ? void 0 : _c.fontStyle), fontWeight: fontWeight === void 0 ? (_d = textSegments[0]) == null ? void 0 : _d.fontWeight : fontWeight, textSegments, letterSpacing, lineHeight, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical, textAutoResize: node.textAutoResize, textCase, paragraphSpacing, paragraphIndent, color: solidColor(node) || ((_e = gradient == null ? void 0 : gradient.gradientStops[0]) == null ? void 0 : _e.color) || ((_f = textSegments[0]) == null ? void 0 : _f.color), gradient: gradient ? { opacity: gradient.opacity === void 0 ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } : void 0, renderBounds: renderBoundsRelativeToFrame(node, frame) });
     } else if ("vectorPaths" in node && node.vectorPaths.length > 0) output.push({ ...base, kind: "vector", color: solidColor(node), paths: node.vectorPaths.map((path) => ({ data: path.data, windingRule: path.windingRule })), vectorGeometry: vectorGeometryRelativeToFrame(node, frame) });
     else output.push({ ...base, kind: "unsupported", unsupportedType: node.type });
     onLeaf();

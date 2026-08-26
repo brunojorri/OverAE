@@ -9,6 +9,7 @@ type BridgeLayer = {
   text?: string; fontSize?: number; fontFamily?: string; fontStyle?: string; fontWeight?: number;
   letterSpacing?: { unit: string; value: number }; lineHeight?: { unit: string; value: number };
   textAlignHorizontal?: string; textAlignVertical?: string; textAutoResize?: string; textCase?: string;
+  textSegments?: Array<{ start: number; end: number; fontFamily: string; fontStyle: string; fontWeight: number; fontSize: number; color?: { r: number; g: number; b: number; a: number } }>;
   paragraphSpacing?: number; paragraphIndent?: number; unsupportedType?: string;
   imageData?: string; imageExtension?: "png" | "jpg" | "gif" | "webp";
   imagePlacement?: { centerX: number; centerY: number; scaleX: number; scaleY: number; rotation: number; originalWidth: number; originalHeight: number; scaleMode: string };
@@ -354,6 +355,15 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
     const clipped = clippedBoundsRelativeToFrame(node, frame);
     output.push({ ...base, ...clipped, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png" });
   }
+  else if (node.type === "RECTANGLE" && !solidColor(node) && !solidStroke(node) && "exportAsync" in node) {
+    // A few library/imported photographs expose no readable ImagePaint even
+    // though Figma renders pixels. Export their rendered rectangle so they do
+    // not become invisible shape layers. An inherited explicit vector mask is
+    // still preserved as the image's track matte.
+    const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+    const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
+    output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+  }
   else if (node.type === "RECTANGLE") {
     const cornerRadius = typeof node.cornerRadius === "number" ? node.cornerRadius : undefined;
     output.push({ ...base, kind: "rectangle", color: solidColor(node), cornerRadius });
@@ -367,7 +377,11 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
     const textCase = node.textCase === figma.mixed ? undefined : node.textCase;
     const paragraphSpacing = node.paragraphSpacing === figma.mixed ? undefined : node.paragraphSpacing;
     const paragraphIndent = node.paragraphIndent === figma.mixed ? undefined : node.paragraphIndent;
-    output.push({ ...base, kind: "text", text: node.characters, fontSize: node.fontSize === figma.mixed ? 16 : node.fontSize, fontFamily: font?.family, fontStyle: font?.style, fontWeight, letterSpacing, lineHeight, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical, textAutoResize: node.textAutoResize, textCase, paragraphSpacing, paragraphIndent, color: solidColor(node) || gradient?.gradientStops[0]?.color, gradient: gradient ? { opacity: gradient.opacity === undefined ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } : undefined, renderBounds: renderBoundsRelativeToFrame(node, frame) });
+    const textSegments = node.getStyledTextSegments(["fontName", "fontWeight", "fontSize", "fills"]).map((segment) => {
+      const segmentFill = firstSolidPaint(segment.fills);
+      return { start: segment.start, end: segment.end, fontFamily: segment.fontName.family, fontStyle: segment.fontName.style, fontWeight: segment.fontWeight, fontSize: segment.fontSize, color: segmentFill && segmentFill.type === "SOLID" ? { ...segmentFill.color, a: segmentFill.opacity === undefined ? 1 : segmentFill.opacity } : undefined };
+    });
+    output.push({ ...base, kind: "text", text: node.characters, fontSize: node.fontSize === figma.mixed ? textSegments[0]?.fontSize || 16 : node.fontSize, fontFamily: font?.family || textSegments[0]?.fontFamily, fontStyle: font?.style || textSegments[0]?.fontStyle, fontWeight: fontWeight === undefined ? textSegments[0]?.fontWeight : fontWeight, textSegments, letterSpacing, lineHeight, textAlignHorizontal: node.textAlignHorizontal, textAlignVertical: node.textAlignVertical, textAutoResize: node.textAutoResize, textCase, paragraphSpacing, paragraphIndent, color: solidColor(node) || gradient?.gradientStops[0]?.color || textSegments[0]?.color, gradient: gradient ? { opacity: gradient.opacity === undefined ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } : undefined, renderBounds: renderBoundsRelativeToFrame(node, frame) });
   }
   else if ("vectorPaths" in node && node.vectorPaths.length > 0) output.push({ ...base, kind: "vector", color: solidColor(node), paths: node.vectorPaths.map((path) => ({ data: path.data, windingRule: path.windingRule })), vectorGeometry: vectorGeometryRelativeToFrame(node, frame) });
   else output.push({ ...base, kind: "unsupported", unsupportedType: node.type });
