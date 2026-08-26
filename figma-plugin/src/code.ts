@@ -448,7 +448,7 @@ function outermostFrame(node: SceneNode): FrameNode | null {
   return frame;
 }
 
-figma.ui.onmessage = async (message) => {
+async function handleUiMessage(message: any) {
   if (message.type === "open-instagram") {
     figma.openExternal("https://www.instagram.com/brunojorri_work/");
     return;
@@ -480,9 +480,9 @@ figma.ui.onmessage = async (message) => {
     figma.ui.postMessage({ type: "error", message: appendMode ? "A layer precisa estar dentro de um frame." : "Selecione exatamente um frame no Figma." });
     return;
   }
-  linkedMedia = await figma.clientStorage.getAsync("overAE.videoLinks") || {};
   const layers: BridgeLayer[] = [];
   try {
+    linkedMedia = await figma.clientStorage.getAsync("overAE.videoLinks") || {};
     const roots: readonly SceneNode[] = appendMode ? [selected] : frame.children;
     const total = roots.reduce((sum, child) => sum + countLeaves(child), 0);
     let processed = 0;
@@ -502,5 +502,13 @@ figma.ui.onmessage = async (message) => {
     figma.ui.postMessage({ type: "scene", scene: { version: 1, importMode: appendMode ? "append" : "create", exportId: Date.now().toString(36), frame: { id: frame.id, name: frame.name, width: frame.width, height: frame.height, color: backgroundColor, backgroundLayerIncluded: !appendMode && !!backgroundColor }, layers } });
   } catch (error) {
     figma.ui.postMessage({ type: "error", message: `Falha ao exportar: ${error instanceof Error ? error.message : String(error)}` });
+  }
+}
+
+figma.ui.onmessage = async (message) => {
+  try {
+    await handleUiMessage(message);
+  } catch (error) {
+    figma.ui.postMessage({ type: "error", message: `Falha no plugin: ${error instanceof Error ? error.message : String(error)}` });
   }
 };

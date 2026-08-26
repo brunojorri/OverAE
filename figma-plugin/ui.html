@@ -57,12 +57,24 @@
     const bridgeUrl = "http://localhost:47831";
     let bridgeToken = "";
     let mediaTarget = null;
+    let operationTimeout = null;
 
     function progress(value, message) {
       bar.style.width = Math.max(0, Math.min(100, value)) + "%";
       status.textContent = message;
     }
     function busy(value) { buttons.forEach((button) => button.disabled = value); }
+    function stopTimeout() {
+      if (operationTimeout) clearTimeout(operationTimeout);
+      operationTimeout = null;
+    }
+    function startTimeout() {
+      stopTimeout();
+      operationTimeout = setTimeout(() => {
+        busy(false);
+        progress(0, "A operação demorou demais. Tente novamente; se houver vídeo, vincule a mídia primeiro.");
+      }, 45000);
+    }
 
     async function connect() {
       try {
@@ -82,6 +94,7 @@
     function begin(type, label) {
       busy(true);
       progress(3, "Preparando " + label + "…");
+      startTimeout();
       parent.postMessage({ pluginMessage: { type } }, "*");
     }
     document.getElementById("send-frame").onclick = () => begin("export", "o frame");
@@ -92,13 +105,13 @@
     window.onmessage = async (event) => {
       const message = event.data.pluginMessage;
       if (!message) return;
-      if (message.type === "progress") { progress(message.value, message.message); return; }
-      if (message.type === "error") { busy(false); progress(0, message.message); return; }
+      if (message.type === "progress") { startTimeout(); progress(message.value, message.message); return; }
+      if (message.type === "error") { stopTimeout(); busy(false); progress(0, message.message); return; }
       if (message.type === "media-link-target") { mediaTarget = message; document.getElementById("media-file").click(); return; }
-      if (message.type === "media-link-complete") { busy(false); progress(100, "Mídia vinculada: " + message.name); return; }
+      if (message.type === "media-link-complete") { stopTimeout(); busy(false); progress(100, "Mídia vinculada: " + message.name); return; }
       if (message.type !== "scene") return;
       progress(80, "Enviando…");
-      if (!bridgeToken && !(await connect())) { busy(false); return; }
+      if (!bridgeToken && !(await connect())) { stopTimeout(); busy(false); return; }
       try {
         const response = await fetch(bridgeUrl + "/v1/scene", {
           method: "POST",
@@ -112,6 +125,7 @@
       } catch (error) {
         progress(0, "Falha: " + error.message);
       } finally {
+        stopTimeout();
         busy(false);
       }
     };
