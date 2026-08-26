@@ -61,11 +61,19 @@
       return scene;
     }
 
+    function buildImportScript(scene) {
+      // ExtendScript uses an older JavaScript parser. Passing raw JSON through
+      // evalScript can turn valid Unicode line separators into an unterminated
+      // string. URI encoding keeps the generated command strictly ASCII.
+      const encodedScene = encodeURIComponent(JSON.stringify(scene));
+      return "figmaAeImport(decodeURIComponent(" + JSON.stringify(encodedScene) + "))";
+    }
+
     function importScene(scene) {
       if (!scene || importing) return;
       importing = true;
       status.textContent = "Importando “" + scene.frame.name + "”…";
-      cs.evalScript("figmaAeImport(" + JSON.stringify(JSON.stringify(scene)) + ")", (result) => {
+      cs.evalScript(buildImportScript(scene), (result) => {
         importing = false;
         lastImportedId = scene.exportId;
         localStorage.setItem("figmaAeLastImportedId", lastImportedId);
