@@ -57,7 +57,7 @@ function solidStroke(node: SceneNode): BridgeLayer["stroke"] {
 
 function imageFill(node: SceneNode): ImagePaint | undefined {
   if (!("fills" in node) || !Array.isArray(node.fills)) return undefined;
-  return node.fills.find((paint): paint is ImagePaint => paint.type === "IMAGE" && paint.visible !== false && !!paint.imageHash);
+  return node.fills.find((paint): paint is ImagePaint => paint.type === "IMAGE" && paint.visible !== false);
 }
 
 function linearGradientFill(node: SceneNode) {
@@ -337,6 +337,14 @@ async function flatten(node: SceneNode, frame: FrameNode, output: BridgeLayer[],
     }
     const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
     output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: imageExtension(bytes), imagePlacement: imagePlacement(node, frame, image, size.width, size.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+  }
+  else if (image && "exportAsync" in node) {
+    // Some imported/library images are visible in Figma while their imageHash
+    // is unavailable to plugins. Preserve the rendered pixels instead of
+    // silently converting the node into an empty rectangle.
+    const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+    const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : undefined;
+    output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
   }
   else if (gradient && node.type === "RECTANGLE") {
     output.push({ ...base, kind: "gradient", gradient: { opacity: gradient.opacity === undefined ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } });

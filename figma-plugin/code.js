@@ -33,7 +33,7 @@
   }
   function imageFill(node) {
     if (!("fills" in node) || !Array.isArray(node.fills)) return void 0;
-    return node.fills.find((paint) => paint.type === "IMAGE" && paint.visible !== false && !!paint.imageHash);
+    return node.fills.find((paint) => paint.type === "IMAGE" && paint.visible !== false);
   }
   function linearGradientFill(node) {
     if (!("fills" in node) || !Array.isArray(node.fills)) return void 0;
@@ -301,6 +301,10 @@
       }
       const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : void 0;
       output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: imageExtension(bytes), imagePlacement: imagePlacement(node, frame, image, size.width, size.height), imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
+    } else if (image && "exportAsync" in node) {
+      const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+      const inheritedMaskGeometry = inheritedMask ? imageMaskGeometry(inheritedMask, frame) : void 0;
+      output.push({ ...base, kind: "image", imageData: bytesToBase64(bytes), imageExtension: "png", imageMask: inheritedMaskGeometry || imageMaskGeometry(node, frame) });
     } else if (gradient && node.type === "RECTANGLE") {
       output.push({ ...base, kind: "gradient", gradient: { opacity: gradient.opacity === void 0 ? 1 : gradient.opacity, transform: gradient.gradientTransform, stops: gradient.gradientStops.map((stop) => ({ position: stop.position, color: stop.color })) } });
     } else if (gradient && node.type !== "TEXT" && "exportAsync" in node) {
